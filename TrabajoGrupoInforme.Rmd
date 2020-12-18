@@ -1,0 +1,998 @@
+---
+title: "Turismo en España"
+author: "Hugo Martin Chisvert , Pavlina Dinkova Grozeva,Ana María Borras Cebolla" 
+date: "10 de Diciembre de 2020"
+output:
+  html_document:
+    theme: paper
+    highlight: textmate 
+    toc: true
+    toc_depth: 3 
+    toc_float: 
+      collapsed: true
+      smooth_scroll: true
+    self_contained: true
+    number_sections: false
+    df_print: kable
+    code_download: true
+editor_options: 
+  chunk_output_type: console
+---
+
+<FONT COLOR="Purple">Proyecto realizado para la asignatura''Programación y manejo de datos en la era del Big Data" impartida por el profesor Pedro J. Pérez en el Grado de Economía de la Universidad de Valencia. La página web de la asignatura se puede ver [aquí]( https://perezp44.github.io/intro-ds-20-21-web) . Los trabajos elaborados por nuestros compañeros de curso pueden verse [aquí](https://perezp44.github.io/intro-ds-20-21-web/07-trabajos.html)</FONT>
+
+```{r packages-setup, include = FALSE}
+library(tidyverse)
+library(klippy)  #- remotes::install_github("rlesur/klippy")
+library(knitr)
+library(cowplot)
+library(xml2)
+library(magick)
+library(maps)
+library(gganimate)
+library(rio)
+library(patchwork)
+```
+
+```{r chunk-setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message = FALSE, warning = FALSE, 
+                      #results = "hold",
+                      cache = FALSE, cache.path = "/caches/", comment = "#>",
+                      #fig.width = 7, #fig.height= 7,   
+                      #out.width = 7, out.height = 7,
+                      collapse = TRUE,  fig.show = "hold",
+                      fig.asp = 7/9, out.width = "60%", fig.align = "center")
+#- para mejorar los gráficos, bueno en realidad para que se vean igual en distintos SO
+#- https://www.jumpingrivers.com/blog/r-knitr-markdown-png-pdf-graphics/
+knitr::opts_chunk$set(dev = "png", dev.args = list(type = "cairo-png"))
+```
+
+```{r options-setup, include = FALSE}
+options(scipen = 999) #- para quitar la notación científica
+options("yaml.eval.expr" = TRUE) #- https://github.com/viking/r-yaml/issues/47  (lo puse x el pb con el warning) En realidad creo que mejor sería ponerlo en RProfile
+```
+
+
+```{r klippy, echo = FALSE}
+klippy::klippy(position = c("top", "right")) #- remotes::install_github("rlesur/klippy")
+```
+
+-----------------
+ 
+
+##  <FONT COLOR="Green"> 1.Introducción </FONT>
+
+La palabra  **turismo** —según la OMT Organización Mundial del Turismo— comprende «las actividades que realizan las personas durante sus viajes y estancias en lugares distintos a su entorno habitual durante un período de tiempo inferior a un año, con fines de ocio, negocios u otros».
+
+
+La industria turística presenta gran importancia a nivel global, pues es la responsable de la creación de numerosos puestos de trabajo y además, tiene aportación directa en el PIB mundial. La actividad generada por los sectores de la hostelería, las agencias de viaje, el transporte de pasajeros y del ocio en general consigue atraer, además, una importante inversión pública y de capital privado.
+
+Es por ello que el objetivo de este trabajo es analizar el sector turístico  centrándonos básicamente en España, con el fin de obtener información acerca de :
+
+> - El origen de los flujos de turistas
+> - Motivos de su llegada
+> - Su gasto 
+
+<center><img src="https://ichef.bbci.co.uk/news/800/cpsprodpb/D939/production/_103590655_valija-turismo.png" width="350px" /></center>
+
+
+
+##  <FONT COLOR="Green"> 2.Datos para la realización del proyecto </FONT> {.tabset}
+
+### **Descarga directa**
+
+Estos han sido los datos más fáciles de obtener, ya que primero los descargamos directamente de diferentes páginas web y luego los alojamos en GitHub. Esta manera es muy cómoda, por lo que ha sido la que más hemos usado.
+Los datos utiizados para la elaboración del presente proyecto son extraidos , principalmente de la base de datos de la  página oficial del **Instituto Nacional de Estadística** (*INE*) , que puede verse [aquí](https://www.ine.es/dyngs/INEbase/listaoperaciones.htm)  
+
+### **Web Scraping**
+
+Para obtener los datos de los monumentos más visitados del mundo, decidimos hacer Web Scraping. El Web Scraping es bastante más complejo que el metodo anterior, ya que hay que buscar datos en el código fuente de la página web. En nuestro caso, decidimos utilizar este método para extraer los datos de una [tabla de WikiPedia](https://en.wikipedia.org/wiki/List_of_most_visited_palaces_and_monuments), así aprendimos cosas nuevas y añadimos variedad al trabajo.
+
+A continuación mostramos la tabla que extraímos y el código utilizado.
+
+![Tabla Wikipedia](https://raw.githubusercontent.com/xi765/TrabajoGrupo/main/Screenshot_2020-12-18%20List%20of%20most%20visited%20palaces%20and%20monuments%20-%20Wikipedia.png)
+
+```{r, echo=TRUE,eval=FALSE}
+url <- "https://en.wikipedia.org/wiki/List_of_most_visited_palaces_and_monuments"
+#Aquí sacamos la tabla
+w <- read_html(url)
+bb <- w %>% rvest::html_nodes(xpath = '/html/body/div[3]/div[3]/div[5]/div[1]/table') %>% rvest::html_table()
+names(bb[[1]]) <- c(1:6)
+#Aquí la arreglamos un poco, cambiando nombres, ordenando etc...
+aa <- as_tibble(bb[[1]]) %>% select(-c(1,5,6)) %>% slice(c(2:11)) %>% mutate(Country = c("China","El Vaticano","Francia","Estados Unidos","Italia","Grecia","India","Francia","Alemania","Rusia")) %>% rename("Monumento" = 1, "Ciudad" = 2, "Visitantes" = 3) %>% relocate(4,.before = 3) %>% mutate(Visitantes = parse_number(Visitantes), Monumento = factor(Monumento, levels = Monumento[order(Visitantes)]), VisitantesM = (Visitantes/1000000), VisitantesM = round(VisitantesM,2))
+```
+
+### **APIS**
+Por último, también hemos obtenido algunos datos de Eurostat a través de su API. Para ello hemos utilizado el paquete ***library(eurostat)*** y el siguiente código:
+```{r eval=FALSE,echo=TRUE}
+#PIB en Millones
+GDP <- eurostat::get_eurostat("nama_10_gdp")
+GDP <- GDP %>% filter( na_item == "B1GQ", unit == "CP_MEUR") %>% select(geo,time,values)
+GDP <- GDP %>% rename( code = geo)
+cid <- eurostat::eu_countries
+GDP <- inner_join(GDP,cid, by = "code" )
+GDP <- GDP %>% select(-c(label)) %>% relocate(name, .before = code)
+GDP <- GDP %>% rename_at(vars(colnames(GDP)), ~ c("Country","Code","Date","PIB"))
+#GASTO TURISTICO Miles
+GT <- eurostat::get_eurostat("tour_dem_extot")
+GT <- GT %>% filter(duration == "N_GE1", purpose == "TOTAL",unit =="THS_EUR", partner == "WORLD")
+GT <- GT %>% select(geo,time,values) %>% rename( code = geo)
+cid <- eurostat::eu_countries
+GT <- inner_join(GT,cid, by = "code" )
+GT <- GT %>% select(-c(label)) %>% relocate(name, .before = code)
+GT <- GT %>% rename_at(vars(colnames(GT)), ~ c("Country","Code","Date","GT"))
+
+
+#POBLACIÓN
+POB <- eurostat::get_eurostat("demo_gind")
+POB <- POB %>% filter( indic_de == "JAN") %>% select(-c(indic_de))
+POB <- POB %>% rename(code = geo)
+cid <- eurostat::eu_countries
+POB <- inner_join(POB,cid, by = "code" )
+POB <- POB %>% select(-c(label)) %>% relocate(name, .before = code)
+POB <- POB %>% rename_at(vars(colnames(POB)), ~ c("Country","Code","Date","POB"))
+```
+
+
+## <FONT COLOR="Green">  3. Turismo a nivel mundial  </FONT>
+
+### **Países más visitados**
+
+El turismo ha sido un sector en auge durante las últimas décadas. Más de 1.100 millones de personas realizan turismo internacional cada año, la mitad en Europa. A favor del viejo continente juega un espacio de libre circulación de personas, una extendida moneda común y un entorno político fragmentado con muchos Estados pequeños y medianos, además de una amplia riqueza patrimonial y playas y buen clima en el sur. De todos modos en el listado de países más visitados también entran Estados Unidos y varios Estados asiáticos.
+
+Según los datos provenientes de la Organización Mundial de Turismo  (UNWTO por sus siglas en inglés),en su informe emitido en noviembre de 2019 , los países más visitados son Francia, España y Estados Unidos, con entre 80 y 90 millones de turistas internacionales; seguidos de China e Italia, con más de 60; a los que siguen ya a mayor distancia Turquía o México en el rango de los 40-50 millones. El crecimiento del turismo internacional se ha dejado notar sobretodo en España, que ganó atrajo mucho turismo y sigue manteniendo la segunda posición por varios años consecutivos; pero también se puede observar en paises como Tailandia, un pais lejano, que tiene cerca de los 40 millons de turistas anuales (en el año 2019)
+La evolución de la tecnología, la mejora de las infraestructuras y el abaratamiento de costes hace que cada vez más seres humanos puedan viajar con más frecuencia y más lejos.
+
+Viajando se accede a culturas que no son como la tuya, a monumentos que no se parecen a los que conoces, a gastronomías que llevan a tu plato productos y sabores inimaginables.
+
+
+```{r, echo=TRUE}
+#Importamos los datos del ranking países más visitados 
+url2 <- "https://raw.githubusercontent.com/Pavlinadinkova/10/main/ranking.csv"
+bb<- rio::import(url2, setclass="tibble")%>% mutate(Pais = c("FRANCIA ","ESPAÑA","EEUU","CHINA","ITALIA","TURQUIA","MÉXICO","ALEMANIA","TAILANDIA","REINO UNIDO","JAPÓN","AUSTRIA","GRECIA","HONG KONG","MALASIA","RUSIA","PORTUGAL","CANADA","POLONIA","PAISES BAJOS","MACAO","INDIA","HUNGRIA","CROACIA","EAU"),Pais = factor(Pais, levels = Pais[order(Viajeros_internacionales, decreasing = TRUE)]), Viajeros_internacionales = stringr::str_remove_all(Viajeros_internacionales, pattern = "[^[:alnum:]]"), Viajeros_internacionales = as.numeric(Viajeros_internacionales), )
+d <- ggplot(bb) +
+  geom_point(aes(x = Ranking, y = Viajeros_internacionales, colour = Ranking )) +
+  facet_wrap(vars(Pais))+ labs(title = "Países más visitados del mundo ",
+              subtitle = "anño 2019", 
+              caption = "Datos provenientes de www.entereat.com",
+              x = "Ranking ",
+              y = "Nº de viajeros",
+              color = "Ranking")
+
+plotly::ggplotly(d, width = 900, height = 500)
+
+
+```
+
+```{r}
+  #Grafico paises más visitados (lollipop)
+
+pl <- ggplot(bb, aes(x=Pais , y=Viajeros_internacionales))+ geom_point(aes(color=Pais), size=3 )+geom_segment(aes(x=Pais, xend=Pais, y=0 , yend=Viajeros_internacionales, color=Pais))+geom_text(aes(label=Pais), size=3, angle=90, vjust=0, nudge_y = -5000000)+theme(legend.position="none")+ labs(y="Número de viajeros", x=NULL,title = "Paises más visitados en el mundo", subtitle = "Datos de 2019" , caption= "Fuente:OMT") +  theme(axis.text.x = element_blank(),axis.line = element_line(color = "black",size=0.5), axis.ticks.x = element_blank(), panel.background = element_rect(fill = "#d5fffd"), panel.grid.major.y = element_line("grey"), panel.grid.major.x = element_blank(), panel.grid.minor.y = element_blank()) + scale_y_continuous(expand = c(0,0),breaks = seq(0,90000000,5000000), labels = paste((seq(0,90000000,5000000)/1000000),"M"), limits = c(0,95000000))
+
+
+ggdraw(pl) + draw_image("https://upload.wikimedia.org/wikipedia/commons/b/ba/Flag_of_Germany.svg",x= 0.35, y = 0.43, width = 0.02, height = 0.02) + draw_image("https://upload.wikimedia.org/wikipedia/commons/4/41/Flag_of_Austria.svg", x=0.49, y=0.35, width=0.02, height = 0.02) + draw_image("https://upload.wikimedia.org/wikipedia/commons/c/c3/Flag_of_France.svg", x=0.10, y=0.87, width=0.018, height = 0.018) +
+  draw_image("https://upload.wikimedia.org/wikipedia/commons/8/81/Bandera_de_Espa%C3%B1a_1978.png", x=0.13, y=0.81, width=0.018, height = 0.018) +
+  draw_image("https://alphapedia.net/wp-content/uploads/2019/12/IMAGENES-DE-LA-BANDERA-DE-ESTADOS-UNIDOS-300x200.jpg", x=0.175, y=0.78, width=0.018, height = 0.018) + draw_image("https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Flag_of_the_People%27s_Republic_of_China.svg/1280px-Flag_of_the_People%27s_Republic_of_China.svg.png", x=0.21, y=0.63, width=0.018, height = 0.018)  + draw_image("https://upload.wikimedia.org/wikipedia/commons/0/03/Flag_of_Italy.svg", x=0.24, y=0.62, width=0.018, height = 0.018)   + draw_image("https://upload.wikimedia.org/wikipedia/commons/b/b4/Flag_of_Turkey.svg", x=0.27, y=0.48, width=0.018, height = 0.018)  + draw_image("https://upload.wikimedia.org/wikipedia/commons/f/fc/Flag_of_Mexico.svg", x=0.31, y=0.47, width=0.018, height = 0.018) + draw_image("https://upload.wikimedia.org/wikipedia/commons/a/a9/Flag_of_Thailand.svg", x=0.38, y=0.41, width=0.018, height = 0.018) + draw_image("https://upload.wikimedia.org/wikipedia/en/a/ae/Flag_of_the_United_Kingdom.svg", x=0.41, y=0.40, width=0.018, height = 0.018) + draw_image("https://upload.wikimedia.org/wikipedia/en/9/9e/Flag_of_Japan.svg", x=0.465, y=0.36, width=0.018, height = 0.018)  + draw_image("https://upload.wikimedia.org/wikipedia/commons/5/5c/Flag_of_Greece.svg", x=0.53, y=0.36, width=0.018, height = 0.018) + draw_image("https://upload.wikimedia.org/wikipedia/commons/5/5b/Flag_of_Hong_Kong.svg", x=0.56, y=0.36, width=0.018, height = 0.018) + draw_image("https://upload.wikimedia.org/wikipedia/commons/6/66/Flag_of_Malaysia.svg", x=0.60, y=0.32, width=0.018, height = 0.018)  + draw_image("https://upload.wikimedia.org/wikipedia/commons/f/f3/Flag_of_Russia.svg", x=0.63, y=0.30, width=0.018, height = 0.018) + draw_image("https://upload.wikimedia.org/wikipedia/commons/5/5c/Flag_of_Portugal.svg", x=0.66, y=0.29, width=0.018, height = 0.018) + draw_image("https://upload.wikimedia.org/wikipedia/commons/thumb/d/d9/Flag_of_Canada_%28Pantone%29.svg/1920px-Flag_of_Canada_%28Pantone%29.svg.png", x=0.705, y=0.28, width=0.018, height = 0.018) + draw_image("https://upload.wikimedia.org/wikipedia/en/1/12/Flag_of_Poland.svg", x=0.74, y=0.27, width=0.018, height = 0.018)  + draw_image("https://www.paisesbajosytu.nl/binaries/medium/content/gallery/netherlandsandyou/content-afbeeldingen/algemeen/vlag-nederland.png", x=0.78, y=0.28, width=0.018, height = 0.018) + draw_image("https://upload.wikimedia.org/wikipedia/commons/6/63/Flag_of_Macau.svg", x=0.82, y=0.26, width=0.018, height = 0.018) + draw_image("https://upload.wikimedia.org/wikipedia/en/4/41/Flag_of_India.svg", x=0.847, y=0.24, width=0.018, height = 0.018 ) + draw_image("https://upload.wikimedia.org/wikipedia/commons/c/c1/Flag_of_Hungary.svg", x=0.89, y=0.23, width=0.018, height = 0.018) + draw_image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1b/Flag_of_Croatia.svg/1920px-Flag_of_Croatia.svg.png", x=0.92, y=0.23, width=0.018, height = 0.018)  + draw_image("https://upload.wikimedia.org/wikipedia/commons/c/cb/Flag_of_the_United_Arab_Emirates.svg", x=0.96, y=0.22, width=0.018, height = 0.018  )
+
+```
+
+Esta estadística presenta el número de llegadas de turistas internacionales que se produjeron en el mundo en 2016, según el área geográfica. Ese año la región Asia-Pacífico recibió alrededor de 300 millones de turistas, una cifra solo superada por la registrada en Europa. En el caso del continente americano, la cifra superó los 200 millones de turistas internacionales. En África y Oriente Medio, estos llegaron a los 58 y a los 56 millones respectivamente. 
+
+```{r Europa}
+#Importamos datos TURISMO MUNDIAL
+url6 <- "https://raw.githubusercontent.com/Pavlinadinkova/10/main/turismo_mundial.csv"
+tt<- rio::import(url6, setclass="tibble")
+names(tt)=c("Continente","Fecha","Turistas")
+#Hacemos el gráfico de llegadas de turistas internacionales en Europa
+
+ mundo_Europa <- tt %>% filter(Continente=="Europa")
+
+  grafEuropa <- ggplot(mundo_Europa, aes(x=Fecha, y=Turistas , group=Continente, color=Fecha)) + geom_line() + facet_grid(Continente ~ .) +
+  expand_limits(y=2) + theme(legend.position = "none") + labs(title = "Llegadas de turistas internacionales en Europa ",    caption = "Source:http://mkt.unwto.org/barometer",
+              x = "Fecha ",
+              y = NULL,
+              color = "Continente",
+              subtitle = "en millones de visitantes")
+
+#Hacemos lo mismo para los otros continentes por separado , y finalmente las unimos.
+
+``` 
+
+```{r Africa , echo=FALSE}
+mundo_Africa <- tt %>% filter(Continente=="Africa")
+  grafAfrica <- ggplot(mundo_Africa, aes(x=Fecha, y=Turistas , group=Continente, color=Fecha)) + geom_line() + facet_grid(Continente ~ .) +
+  expand_limits(y=2) + theme(legend.position = "none") + labs(title = "Llegadas de turistas internacionales por continente ",    caption = "Source:http://mkt.unwto.org/barometer",
+              x = "Fecha ",
+              y = NULL,
+              color = "Continente",
+              subtitle = "en millones de visitantes")
+ 
+
+```
+
+```{r Americas , echo=FALSE}
+
+ mundo_Americas <- tt %>% filter(Continente=="Americas")
+  grafAmericas <- ggplot(mundo_Americas, aes(x=Fecha, y=Turistas , group=Continente, color=Fecha)) + geom_line() + facet_grid(Continente ~ .) +
+  expand_limits(y=2) + theme(legend.position = "none") + labs(title = "Llegadas de turistas internacionales en America del Norte, Central y Sud ",    caption = "Source:http://mkt.unwto.org/barometer",
+              x = "Fecha ",
+              y = NULL,
+              color = "Continente",
+              subtitle = "en millones de visitantes")
+
+```
+
+```{r Asia, echo=FALSE}
+mundo_Asia <- tt %>% filter(Continente=="Asia_Pacific")
+  grafAsia <- ggplot(mundo_Asia, aes(x=Fecha, y=Turistas , group=Continente, color=Fecha)) + geom_line() + facet_grid(Continente ~ .) +
+  expand_limits(y=2) + theme(legend.position = "none") + labs(title = "Llegadas de turistas internacionales en Asia Pacífica ",    caption = "Source:http://mkt.unwto.org/barometer",
+              x = "Fecha ",
+              y = NULL,
+              color = "Continente",
+              subtitle = "en millones de visitantes")
+
+```
+
+```{r Middle East , echo=FALSE}
+
+
+mundo_Oriente <- tt %>% filter(Continente=="Middle_east")
+  grafOriente <- ggplot(mundo_Oriente, aes(x=Fecha, y=Turistas , group=Continente, color=Fecha)) + geom_line() + facet_grid(Continente ~ .) +
+  expand_limits(y=2) + theme(legend.position = "none") + labs(title = "Llegadas de turistas internacionales en Oriente Medio ",    caption = "Source:http://mkt.unwto.org/barometer",
+              x = "Fecha ",
+              y = NULL,
+              color = "Continente",
+              subtitle = "en millones de visitantes")
+
+```
+
+
+```{r, echo=TRUE}
+library(patchwork)
+(grafAfrica + grafEuropa) / (grafAmericas+grafAsia+ grafOriente )
+
+```
+
+
+### **Los 10 monumentos más visitados**
+
+***Ambos gráficos salían descuadrados al ejecutarlos directamente en el .Rmd, así que los hemos alojado en github e insertado mediante url.***
+
+En el primer gráfico podemos ver los diez monumentos más visitados del mundo, se muestra: el número de visitantes anuales en Millones, la bandera y el nombre del país donde se encuentra el monumento.
+
+Se puede observar como la Ciudad prohibida de Pekín es el monumento más visitado del mundo, con 17 millones de visitantes anuales. También cabe destacar que seis de los diez monumentos más visitados del mundo se encuentran en Europa.
+
+Estos datos los hemos obtenido de WikiPedia mediante la técnnica WebScraping, ya hemos explicado este proceso en el punto 2.
+
+```{r monmundo, echo=TRUE}
+url <- "https://en.wikipedia.org/wiki/List_of_most_visited_palaces_and_monuments"
+
+#Sacamos la tabla de la página web, usamos el metodo web scrapling.
+w <- read_html(url)
+bb <- w %>% rvest::html_nodes(xpath = '/html/body/div[3]/div[3]/div[5]/div[1]/table') %>% rvest::html_table()
+names(bb[[1]]) <- c(1:6)
+
+#Arreglamos los datos: cambiamos los nombres, hacemos factores y cambiamos los datos a Millones.
+aa <- as_tibble(bb[[1]]) %>% select(-c(1,5,6)) %>% slice(c(2:11)) %>% mutate(Country = c("China","El Vaticano","Francia","Estados Unidos","Italia","Grecia","India","Francia","Alemania","Rusia")) %>% rename("Monumento" = 1, "Ciudad" = 2, "Visitantes" = 3) %>% relocate(4,.before = 3) %>% mutate(Visitantes = parse_number(Visitantes), Monumento = factor(Monumento, levels = Monumento[order(Visitantes)]), VisitantesM = (Visitantes/1000000), VisitantesM = round(VisitantesM,2))
+
+#Arreglamos la foto que vamos a utilizar de fondo.
+url <- "https://d2gg9evh47fn9z.cloudfront.net/800px_COLOURBOX1682440.jpg"
+img <- image_read(url) %>% image_resize("1500x750") %>% image_colorize(60,"#ffffff")
+################################################################################
+#Hacemos el gráfico principal
+plot <- ggplot(aa,aes(x=VisitantesM,y=Monumento)) +
+              geom_bar(color = "#000000",fill = "blue",stat="identity", width = 0.5) +
+              geom_text(size = 12, stat = "identity", aes(label= VisitantesM), hjust= -1) +
+              scale_y_discrete(labels = c("Palacio Peterhof, San Petesburgo","Catedral de Colonia, Colonia","Torre Eiffel, París","Taj Mahal, Agra","Partenón, Atenas","Coliseo, Roma","Monumento a Lincoln, Washington","Palacio de Versalles, Versailles","Basílica de San Pedro, El Vaticano","Ciudad prohibida, Pekín")) +
+              scale_x_continuous(limits = c(0,20), expand = c(0.1,2)) +
+              labs(fill=NULL,
+               x= NULL,
+               y=NULL,
+               title="Monumentos más visitados del mundo",
+               subtitle = "en Millones de visitantes anuales",
+               caption="Fuente: Wikipedia") +
+               theme( plot.background = NULL,
+              panel.background = element_blank(),
+              panel.grid  = element_blank(),
+              axis.ticks = element_blank(),
+              axis.text.x = element_blank(),
+              axis.text.y = element_text(face = "bold",size = 20),
+              plot.title = element_text(hjust = 0.5, size = 30),
+              plot.subtitle = element_text(hjust = 0.5, size = 20),
+              panel.border = element_blank(),
+              legend.position = "none",
+              plot.margin = margin(t = 5, r = 25, b = 5,15),
+              strip.background = element_rect(fill = "#e8d7a3",colour = NULL))
+#Añadimos unas imágenes al gráfico principal
+plotd <- ggdraw(plot) + draw_image("https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Flag_of_the_People%27s_Republic_of_China.svg/1200px-Flag_of_the_People%27s_Republic_of_China.svg.png", x= 0.27, y = 0.84, width = 0.05, height = 0.05) + draw_image("https://upload.wikimedia.org/wikipedia/commons/thumb/0/00/Flag_of_the_Vatican_City.svg/500px-Flag_of_the_Vatican_City.svg.png",x= 0.27, y = 0.75, width =0.05, height = 0.05, scale = 1.3) + draw_image("https://upload.wikimedia.org/wikipedia/en/thumb/c/c3/Flag_of_France.svg/800px-Flag_of_France.svg.png", x=0.27, y=0.66, width=0.05, height = 0.05) + draw_image("https://upload.wikimedia.org/wikipedia/en/thumb/a/a4/Flag_of_the_United_States.svg/125px-Flag_of_the_United_States.svg.png", x=0.27, y=0.575, width=0.045, height = 0.05, scale = 0.9) + draw_image("https://upload.wikimedia.org/wikipedia/en/thumb/0/03/Flag_of_Italy.svg/125px-Flag_of_Italy.svg.png", x=0.27, y=0.49, width=0.05, height = 0.05) + draw_image("https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Flag_of_Greece.svg/125px-Flag_of_Greece.svg.png", x=0.27, y=0.40, width=0.05, height = 0.05) + draw_image("https://upload.wikimedia.org/wikipedia/en/thumb/4/41/Flag_of_India.svg/125px-Flag_of_India.svg.png", x=0.27, y=0.315, width=0.05, height = 0.05) + draw_image("https://upload.wikimedia.org/wikipedia/en/thumb/c/c3/Flag_of_France.svg/800px-Flag_of_France.svg.png", x=0.27, y=0.225, width=0.05, height = 0.05) + draw_image("https://upload.wikimedia.org/wikipedia/en/thumb/b/ba/Flag_of_Germany.svg/125px-Flag_of_Germany.svg.png", x=0.27, y=0.14, width=0.05, height = 0.05) + draw_image("https://upload.wikimedia.org/wikipedia/en/thumb/f/f3/Flag_of_Russia.svg/125px-Flag_of_Russia.svg.png", x=0.27, y=0.06, width=0.05, height = 0.05)
+#Por último añadimos un fondo
+graficomon <- ggdraw() + draw_image(img) + draw_plot(plotd)
+dir.create(here::here("imagenes"))
+#Guardamos el gráfico
+ggsave(filename = "graficmonworld.png",plot = graficomon, device = "png", path = here::here("imagenes"), width = 50.8, height = 28.575, units = "cm")
+```
+![Monumentos más visitados del mundo](https://raw.githubusercontent.com/xi765/TrabajoGrupo/main/graficmonworld.jpeg)
+
+También hemos hecho un mapa donde se muestra las ubicaciones de los ya mencionados monumentos.
+
+```{r, echo=TRUE}
+#Aprovechamos los datos empleados para el gráfico anterior y los arreglamos un poco
+world <- map_data("world") %>% mutate(color = case_when(region == "China" ~ 1,
+                                                        region == "Vatican" ~ 2,
+                                                        region == "France" ~ 3,
+                                                        region == "USA" ~ 4,
+                                                        region == "Italy" ~ 5,
+                                                        region == "Greece" ~ 6,
+                                                        region == "India" ~ 7,
+                                                        region == "Germany" ~ 8,
+                                                        region == "Russia" ~ 9)) %>% mutate(color = if_else(is.na(color),0,color))
+
+#Hacemos un dataframe con las coordenadas de cada monumento
+ciudades <- c("Pekín","El Vaticano","Versailles","Washington","Roma","Atenas","Agra","París","Colonia","San Petesburgo")
+lat <- c(39.9042,41.9029,48.8014,38.9072,41.9028,37.9838,27.1767,48.8566,50.9375,59.9311)
+long <- c(116.4074,12.4534,2.1301,-77.0369,12.4964,23.7275,78.0081,2.3522,6.9603,30.3609)
+
+coordciudades <- data.frame(ciudades,lat,long)
+#Hacemos las líneas que uniran las imágenes con la ubicación de cada monumento.
+lineas <- data.frame(id = c("Pekín","El Vaticano","Versailles","Washington","Roma","Atenas","Agra","París","Colonia","San Petesburgo"),
+                     lat_1 = c(39.9042,41.9029,48.8014,38.9072,41.9028,37.9838,27.1767,48.8566,50.9375,59.9311),
+                     long_1 = c(116.4074,12.4534,2.1301,-77.0369,12.4964,23.7275,78.0081,2.3522,6.9603,30.3609),
+                     lat_2 = c(45,13,45,25,20,50,0,75,100,90),
+                     long_2 = c(150,40,-50,-130,-20,60,115,-50,-10,40))
+#Cargamos la imágen de cada monumento y le añadimos un borde.
+china <- image_read("https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Forbidden_City_Beijing_Shenwumen_Gate.JPG/800px-Forbidden_City_Beijing_Shenwumen_Gate.JPG") %>% image_border("#ffffff","10x10")
+vaticano <- image_read("https://upload.wikimedia.org/wikipedia/commons/thumb/f/f5/Basilica_di_San_Pietro_in_Vaticano_September_2015-1a.jpg/1200px-Basilica_di_San_Pietro_in_Vaticano_September_2015-1a.jpg") %>% image_border("#ffffff","10x10")
+versaill <- image_read("https://upload.wikimedia.org/wikipedia/commons/thumb/2/28/Parc_chateau_versailles.jpg/800px-Parc_chateau_versailles.jpg") %>% image_border("#ffffff","10x10")
+wash <- image_read("https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Lincoln_Memorial_%28May_2014%29_crop.jpg/800px-Lincoln_Memorial_%28May_2014%29_crop.jpg") %>% image_border("#ffffff","10x10")
+roma <- image_read("https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Colosseo_2008.jpg/800px-Colosseo_2008.jpg") %>% image_border("#ffffff","10x10")
+atenas <- image_read("https://historiaeweb.com/wp-content/uploads/2018/02/Vista-general-del-Parten%C3%B3n-de-Atenas.jpg") %>% image_border("#ffffff","10x10")
+agra <- image_read("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Taj_Mahal_%28Edited%29.jpeg/800px-Taj_Mahal_%28Edited%29.jpeg") %>% image_border("#ffffff","10x10")
+paris <- image_read("https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/Tour_Eiffel_Wikimedia_Commons_%28cropped%29.jpg/360px-Tour_Eiffel_Wikimedia_Commons_%28cropped%29.jpg") %>% image_border("#ffffff","10x10")
+colonia <- image_read("https://megaconstrucciones.net/images/edificios-religiosos/foto/colonia-catedral.jpg") %>% image_border("#ffffff","10x10")
+pete <- image_read("https://upload.wikimedia.org/wikipedia/commons/thumb/f/f5/Grand_Cascade_in_Peterhof_01.jpg/800px-Grand_Cascade_in_Peterhof_01.jpg") %>% image_border("#ffffff","10x10")
+#Hacemos el gráfico principal
+mapam <- ggplot() + geom_map(data = world, map = world, aes(long, lat, map_id = region), color = "#000000", fill = "#f7eca1") +
+                    geom_map(data = world %>% filter(color==1), map = world, aes(long, lat, map_id = region), color = "#000000", fill = "red") +
+                    geom_map(data = world %>% filter(color==2), map = world, aes(long, lat, map_id = region), color = "#000000", fill = "yellow") +
+                    geom_map(data = world %>% filter(color==3), map = world, aes(long, lat, map_id = region), color = "#000000", fill = "#9d05ff") +
+                    geom_map(data = world %>% filter(color==4), map = world, aes(long, lat, map_id = region), color = "#000000", fill = "#ab6800") +
+                    geom_map(data = world %>% filter(color==5), map = world, aes(long, lat, map_id = region), color = "#000000", fill = "yellow") +
+                    geom_map(data = world %>% filter(color==6), map = world, aes(long, lat, map_id = region), color = "#000000", fill = "#004dff") +
+                    geom_map(data = world %>% filter(color==7), map = world, aes(long, lat, map_id = region), color = "#000000", fill = "#ff9300") +
+                    geom_map(data = world %>% filter(color==8), map = world, aes(long, lat, map_id = region), color = "#000000", fill = "#a4034b") +
+                    geom_map(data = world %>% filter(color==9), map = world, aes(long, lat, map_id = region), color = "#000000", fill = "#238a00") +
+                    geom_segment(data = lineas, aes(x = long_1, y = lat_1, xend = long_2, yend = lat_2), color = "#000000", size = 2, alpha = 0.8, lineend = "round") +
+                    geom_point(data = coordciudades, aes(x = long,y = lat), size = 2) +
+                    ylim(-55,NA) +
+                    theme(panel.background = element_rect(fill = "#a6fffb"), panel.grid = element_line(colour = "#000000"), axis.title = element_blank(),
+                    axis.text = element_blank(), axis.ticks = element_blank())
+#Añadimos las imágenes de los monumentos al gráfico principal.
+plotmap <- ggdraw(mapam) +  draw_image(china, x = 0.8, y = 0.55, width = 0.15, height = 0.15) +
+                            draw_image(vaticano, x = 0.55, y = 0.4, width = 0.1, height = 0.1) +
+                            draw_image(versaill, x = 0.35, y = 0.6, width = 0.10, height = 0.10) +
+                            draw_image(wash, x = 0.1, y = 0.5, width = 0.15, height = 0.15) +
+                            draw_image(roma, x = 0.4, y = 0.45, width = 0.1, height = 0.1) +
+                            draw_image(atenas, x = 0.6, y = 0.6, width = 0.10, height = 0.10) +
+                            draw_image(agra, x = 0.7, y = 0.3, width = 0.15, height = 0.15) +
+                            draw_image(paris, x = 0.3, y = 0.8, width = 0.15, height = 0.15) +
+                            draw_image(colonia, x = 0.4, y = 0.83, width = 0.15, height = 0.15) +
+                            draw_image(pete, x = 0.55, y = 0.85, width = 0.1, height = 0.1)
+#Guardamos el gráfico
+ggsave(filename = "mapmonworld.png",plot = plotmap, device = "png", path = here::here("imagenes"), width = 50.8, height = 28.575, units = "cm")
+```
+![Ubicación de los 10 monumentos más visitados del mundo](https://raw.githubusercontent.com/xi765/TrabajoGrupo/main/mapmonworld.jpeg)
+
+### **Ingresos y gastos por el turismo**
+
+España es el segundo país con más ingresos por el turismo
+
+Se mantiene en el podio gracias a los 83 millones de extranjeros que visitaron el país y a los cerca de 67.300 millones que dejaron
+
+El turismo es una mina de oro para España. Nuestro país logró mantenerse en la tercera posición en la clasificación mundial tanto por el número de turistas internacionales como por la cantidad de ingresos por el turismo. En concreto, 83 millones de viajeros visitaron España en 2018, un 1% más que el año anterior, y dejaron alrededor de 67.300 millones de euros, un 4% más, según indica la Organización Mundial del Turismo (OMT).
+
+Por llegadas, nuestro país sólo se situó por detrás de Francia, que registró 89 millones de turistas (+3%), y se colocó por delante de Estados unidos (80 millones y un aumento del 4%). En cuanto a los ingresos, es EE UU el que lidera el ranking y Francia se sitúa por detrás de España. Estados Unidos ingresó el año pasado 214.000 millones de dólares por turismo (un 2% más) y Francia, 67.000 millones (un 6% más). Los siguientes destinos en cuanto a las llegadas son China, Italia, Turquía, México, Alemania, Tailandia y el Reino Unido.
+
+En cuanto a ingresos, Tailandia se encuentra en cuarto lugar, seguida del Reino Unido, Italia, Australia, Alemania, Japón –que entró en el grupo de los diez primeros después de siete años de crecimiento– y China, con un incremento del 21%.
+
+```{r, echo=TRUE}
+#Importamos los datos de los ingresos
+url3 <- "https://raw.githubusercontent.com/Pavlinadinkova/10/main/ingresos_paises.csv"
+rr<- rio::import(url3, setclass="tibble")
+
+ ingresos <- ggplot(rr, aes(x=reorder(Pais,Miles_millones_dolares), y=Miles_millones_dolares, fill=Pais))+
+  geom_bar(stat="identity") +
+  theme(legend.position = "none") +
+  coord_polar(start = 0) +
+  labs (x="Paises") + labs(y="Miles de millones de dólares") + labs(title = "Paises con más ingresos por el sector turístico ") + labs(subtitle = "En miles de millones de dólares")
+
+ingresos
+
+
+```
+
+### ***Gasto turístico en Europa***
+
+En primer lugar hemos hecho un gráfico de puntos en el que hemos intentado buscar si había relación entre la renta per capita de los países y el gasto en turismo de sus habitantes. 
+
+Para ello hemos obtenido datos del PIB, la población y el gasto turístico de los países de la Unión Europea. Los datos los hemos obtenido a través de la API de Eurostat como ya hemos comentado en el apartado 2.
+
+#### Gráfico de puntos
+
+En este gráfico podemos ver como si que hay una relación positiva entre el PIB per capita y el gasto en turismo de sus habitantes, esto se debe a que el turismo no es un servicio de primera necesidad. Este gráfico nos parece útil para saber que países deberían ser objetivo de las campañas de publicidad del sector turístico español.
+
+#### Mapa de Europa
+
+En este mapa hemos ilustrado los datos obtenidos anteriormente. Mirando el gráfico rápidamente podemos identificar los países que más gastan en turismo por habitante. Cabe destacar que los países del Norte de Europa son los que más gastan en turismo, así como que los países del Este son los que menos.
+
+
+
+```{r, echo=TRUE}
+#En los siguientes códigos obtenemos los datos de la API de eurostat y los arreglamos un poco
+#PIB en Millones
+GDP <- eurostat::get_eurostat("nama_10_gdp")
+GDP <- GDP %>% filter( na_item == "B1GQ", unit == "CP_MEUR") %>% select(geo,time,values)
+GDP <- GDP %>% rename( code = geo)
+cid <- eurostat::eu_countries
+GDP <- inner_join(GDP,cid, by = "code" )
+GDP <- GDP %>% select(-c(label)) %>% relocate(name, .before = code)
+GDP <- GDP %>% rename_at(vars(colnames(GDP)), ~ c("Country","Code","Date","PIB"))
+#GASTO TURISTICO Miles
+GT <- eurostat::get_eurostat("tour_dem_extot")
+GT <- GT %>% filter(duration == "N_GE1", purpose == "TOTAL",unit =="THS_EUR", partner == "WORLD")
+GT <- GT %>% select(geo,time,values) %>% rename( code = geo)
+cid <- eurostat::eu_countries
+GT <- inner_join(GT,cid, by = "code" )
+GT <- GT %>% select(-c(label)) %>% relocate(name, .before = code)
+GT <- GT %>% rename_at(vars(colnames(GT)), ~ c("Country","Code","Date","GT"))
+
+
+#POBLACIÓN
+POB <- eurostat::get_eurostat("demo_gind")
+POB <- POB %>% filter( indic_de == "JAN") %>% select(-c(indic_de))
+POB <- POB %>% rename(code = geo)
+cid <- eurostat::eu_countries
+POB <- inner_join(POB,cid, by = "code" )
+POB <- POB %>% select(-c(label)) %>% relocate(name, .before = code)
+POB <- POB %>% rename_at(vars(colnames(POB)), ~ c("Country","Code","Date","POB"))
+
+#Juntamos todos los datos que hemos obtenido en un único dataframe.
+##JOIN
+data2 <- inner_join(GT,GDP, by = c("Date","Country","Code")) %>% inner_join(POB, by = c("Date","Country","Code") )
+data2 <- data2 %>% mutate( GT = (GT/1000)) #GT en Millones, igual que PIB
+data2 <- data2 %>% mutate( GTporcPIB = (GT/PIB), GTpc = (GT/POB), PIBpc = (PIB/POB))#PIBpc en Millones
+data2 <- data2 %>% separate(Date, c("Year","Month","Day"), sep = "[-]") %>% select(-c("Month","Day"))  %>% filter(Year == "2018") 
+#Hacemos los gráficos
+###GRÁFICO DE PUNTOS
+plot <- ggplot(data2,aes(x=PIBpc,y=GTpc)) +
+        geom_point() +
+        geom_smooth(method = "lm", formula = "y~x", show.legend = TRUE, colour = "red", alpha = 0.3) +
+        geom_text(label = data2$Country, nudge_y = 0.0002, check_overlap = TRUE) +
+        labs(fill="% PIB",
+        x="PIBpc",
+        y="Gasto en Turismo pc",
+        title="Gasto en turismo",
+        caption="Fuente: Eurostat") +
+        theme( plot.background = element_rect( fill = "#ffffff"),
+              panel.background = element_rect( fill = "#fffbdc", colour = "lavenderblush", size = 0.1 ),
+              panel.grid  = element_line( colour ="#dadada"),
+              axis.ticks = element_blank(),
+              axis.text = element_blank(),
+              plot.title = element_text(hjust = 0.5),
+              panel.border = element_rect(fill = NA,colour = "black"),
+              legend.background = element_rect( fill = "cornsilk2", colour = "black" ),
+              plot.margin = margin(t = 5, r = 25, b = 5,15) )
+plot
+
+###MAPA
+#Filtramos por los países europeos
+mapdata <- map_data("world") %>% filter(region %in% c("Austria","Belgium","Bulgaria","Croatia","Cyprus",
+                   "Czech Republic","Denmark","Estonia","Finland","France",
+                   "Germany","Greece","Hungary","Ireland","Italy","Latvia",
+                   "Lithuania","Luxembourg","Malta","Netherlands","Poland",
+                   "Portugal","Romania","Slovakia","Slovenia","Spain",
+                   "Sweden","UK","Switzerland","Bosnia and Herzegovina","Serbia","Ukraine","Belarus","Albania","Montenegro","Kosovo","Macedonia","Moldova"))
+#Juntamos los datos obtenidos anteriormente con los datos del mapa.
+mapdata2 <- full_join(mapdata,data2 %>% mutate(Country = if_else(Country=="Czechia", true = "Czech Republic", false = Country)), by = c("region"="Country"))
+#Hacemos el gráfico
+mapaplot <- ggplot(mapdata2, aes(x = long, y = lat, group=group, fill = GTpc) ) +
+            geom_polygon(color ="#ffffff") +
+            scale_fill_gradient(low = "#313200",high = "#f7ff00") +
+            labs(fill="Gasto en turismo pc",
+            x=NULL,
+            y=NULL,
+            title="Gasto en turismo per capita en la UE",
+            caption="Fuente: Elaboración propia, datos de Eurostat") +
+            theme( plot.background = element_rect( fill = "#ffffff"),
+              panel.background = element_rect( fill = "cornsilk2", colour = "lavenderblush", size = 0.1 ),
+              panel.grid  = element_line( colour ="grey"),
+              axis.ticks = element_blank(),
+              axis.text = element_blank(),
+              plot.title = element_text(hjust = 0.5),
+              panel.border = element_rect(fill = NA,colour = "black"),
+              legend.background = element_rect( fill = "cornsilk2", colour = "black" ),
+              plot.margin = margin(t = 5, r = 5, b = 5,10) )
+mapaplot
+
+
+```
+
+
+
+
+## <FONT COLOR="Green"> 4.Turismo en España </FONT>
+
+España es un país que puede presumir de su riqueza cultural , teniendo algunas de las catedrales más bonitas del mundo, quince ciudades que son Patromonio de la Humanidad para la ONU o 52 Reservas de la Biosfera declaradas por la UNESCO. Por eso, no es de extrañar que cada año millones de turistas visitan España, y no sólo por el buen tiempo, las playas o el ocio, sino también para visitar los monumentos culturales.
+
+
+###  ***Importancia del turismo*** 
+
+Actualmente el turismo es una de las actividades económicas y culturales más importantes para el desarrollo de un país o un región. El turismo se puede presentar en muchas variantes, tales como : <FONT COLOR="Orange">turismo cultural, de aventura, de entretenimiento, de relajación.</FONT> 
+
+Independientemente de las posibles variantes que haya del turismo, la importancia de esta actividad reside en dos pilares principales. El primero es aquel que tiene que ver con el movimiento y la reactivación económica que genera en la región específica en la que se realiza. Así, todos los países y regiones del planeta cuentan con el turismo como una actividad económica más que genera empleos, obras de infraestructura, desarrollo de establecimientos gastronómicos y hoteleros, crecimiento del transporte aéreo, terrestre o marítimo, etc. Obviamente, hay regiones en el mundo que están catalogadas como algunos de los puntos de turismo más importantes o dinámicos mientras que otros no, y esto tendrá que ver con la atención que cada país puede prestarle a esta actividad, creando más posibilidades para que los visitantes disfruten.
+
+```{r, echo=FALSE}
+knitr::include_graphics("https://www.sustainability-times.com/wp-content/uploads/thumbs/Tourism-371emzvml7493dphpq91xc.jpg")
+
+```
+
+
+
+###  ***Efectos positivos del turismo*** 
+
+>- El turismo es un gran generador de empleo 
+
+<center><img src="https://www.xibms.com/blog/wp-content/uploads/2020/05/career-prospects-in-hotel-management.png" /></center>
+
+
+El turismo ha sido el principal creador de empleo en España desde el estallido de la crisis, mitigando sus efectos sobre una parte importante de la sociedad española. De hecho en los años transcurridos desde 2009 a 2016, el empleo de las ramas de actividad turísticas se ha elevado un 13,4%.
+
+Es un sector abierto que facilita la incorporación al mercado laboral de colectivos con dificultades de inserción laboral (p.ej. jóvenes, mujeres, mayores de 45 años,personal con bajos niveles de estudios) a la vez que contribuye a conciliar y compaginar el desempeño laboral con otras actividades personales.
+
+De todas las actividades relacionadas con el sector turístico la más relevante con diferencia por volumen de empleo es el de la restauración que representa con 1,2
+millones de empleos casi la mitad del empleo turístico (el 45,8%), de forma que sus características y condicionantes
+laborales afectan en gran medida la imagen del conjunto del sector (alojamientos, restaurantes, empresas de transporte, de alquiler de coches, comercios o actividades de ocio).
+
+Dentro de las diferentes actividades que se desarrollan en el sector turístico, el transporte de viajeros ha sido clave para que aumente el empleo, ya que tanto en hoteles como en bares y restaurantes menguó.
+
+Sin embargo, una parte creciente de la sociedad no valora positivamente su notable contribución social debido a la congestión y a la existencia de algunas prácticas laborales.
+
+De hecho, las últimas estadísticas muestran una clara desaceleración en la creación de empleo. Sigue aumentando la ocupación, pero no como lo hacía desde que comenzó la recuperación.
+
+
+
+```{r,echo = TRUE}
+el_url <- "https://raw.githubusercontent.com/xi765/TrabajoGrupo/main/empleo_tur.csv"
+
+empleo <- rio::import(el_url)
+
+#Gráfico
+
+empleo1 <- empleo %>% ggplot(aes(x = Periodo, y = Total, colors(Periodo))) + geom_line() + geom_point(aes(fill = Periodo))+ labs(title = "Número de ocupados en el sector turístico",    caption = "Source:Datos INE",x = "Fecha ",y = NULL,color = "Periodo", subtitle= "Desde 2015 a 2019")
+empleo1
+
+```
+
+>- Gran promotor de la marca país
+
+<center><img src="https://imagenes.20minutos.es/files/image_656_370/uploads/imagenes/2012/06/26/66932.jpg" /></center>
+
+
+El turismo también es un aspecto clave en la promoción de un país para el mejoramiento de la reputación y el posicionamiento, promoviendo todas sus fortalezas como cultura, deportes, empresas, destinos históricos, eventos, educación, inversión, etc., y así poderle dar al mundo incentivos para visitar o invertir.
+
+>- PIB
+
+Según los datos extraídos de la página oficial del Instituto Nacional de Estadística (**INE**), el turismo aporta un 12,5% al PIB nacional.Es el sector que más riqueza aporta a la economía española.En términos de contribución al PIB y empleo, la industria turística es la más importante del país gracias al crecimiento imparable de la llegada de viajeros extranjeros.
+
+```{r, echo=TRUE}
+
+#Importamos datos de PIB
+url5 <- "https://raw.githubusercontent.com/Pavlinadinkova/10/main/pibturi.csv"
+pp<- rio::import(url5, setclass="tibble")
+names(pp)= c("Componente_PIB","Vtype","Fecha","Total")
+#Grafico PIB
+gg <- ggplot(pp, aes(x=Fecha, y=Total, color= Fecha))  + geom_point( ) + geom_line() +
+  labs(title = "Aportacion del turismo en el PIB de España" , subtitle="Datos en porcentajes", x="% del PIB", y="Años")
+gg
+
+
+```
+
+
+
+###  ***Número de turistas*** 
+
+
+Han aumentado el número de turistas internacionales considerablemente en los últimos años. Concretamente, 30,7 millones de personas más visitan nuestro país desde 2009.
+
+    De hecho, España logró en 2019 batir por séptimo año consecutivo su récord histórico en llegadas de turistas internacionales, con un registro de 83,7 millones de visitantes, lo que supone un crecimiento del 1,1% con respecto al año anterior, según los datos de la encuesta Frontur publicada por el Instituto Nacional de Estadística (INE).
+
+    Y en cuanto al número de turistas por nacionalidad, como podemos ver en el gráfico, el Reino Unido es el principal emisor de turistas a España. En julio de 2019, el número de turistas británicos que visitaron España fue de 2.166.289, seguido por alemanes (1.242.766 visitantes) y franceses (1.420.601 turistas).
+
+
+
+
+```{r, echo=TRUE}
+el_url <- "https://raw.githubusercontent.com/AnaMaria1198/Trabajo/main/10822bd%20(2).csv"
+datos <- rio::import(el_url)
+
+datos <- datos %>% mutate( Total = stringr::str_remove_all(Total, pattern = "([.])"))
+datos <- datos %>% mutate( Total = stringr::str_replace_all(Total , pattern = "[,]" , replacement = "." ))
+datos <- datos %>% mutate( Total = as.numeric(Total))
+
+
+#Arreglar-lo
+datos <- datos %>% mutate( VType = stringr::str_replace_all(VType , pattern = "[³]" , replacement = "" ))
+datos <- datos %>% mutate( VType = stringr::str_replace_all(VType , pattern = "[±]" , replacement = "ny" ))
+datos <- datos %>% mutate( VType = stringr::str_replace_all(VType , pattern = "[Ã]" , replacement = "o" ))
+datos <- datos %>% mutate( Country = stringr::str_replace_all(Country , pattern = "[Ã©]" , replacement = "e" ))
+datos <- datos %>% mutate( Country = stringr::str_replace_all(Country , pattern = "[³]" , replacement = "o" ))
+
+#Arreglar datos
+aa <- datos %>% filter(VType == "Dato base")
+bb <- aa %>% separate(Date, c("year","month"), sep = "[-]") %>% select(-c(month))
+
+cc <- bb %>% group_by(year, Country) %>% filter(Country!=Total) %>% mutate(SumaTotal= sum(Total)) %>% mutate(year = unique(year))
+
+#GRÁFICOS
+filtro <- cc %>% filter(Country!="Total") %>% select(-c(Total)) %>% unique() %>% group_by(year) %>% mutate (Country = factor(Country, levels = Country[order(SumaTotal)]))
+p <- filtro %>% ggplot(.,aes(x = year, y = SumaTotal ))+
+    geom_bar(aes(fill = Country), stat = "identity")+
+    labs(title = "España 2015-2020",
+    subtitle = "Número de turistas por país", source = "INE") +
+    scale_y_continuous(expand = c(0,2000000),breaks = seq(0,90000000,5000000), labels = paste((seq(0,90000000,5000000)/1000000),"M"))
+
+
+plotly::ggplotly(p)
+```
+```{r, echo=TRUE}
+#Gráfico de lineas
+filtro <- cc %>% filter(Country!="Total")
+cc1 <- filtro %>%
+  group_by(year) %>%
+  arrange(year, desc(SumaTotal)) %>%
+  mutate(ranking = row_number()) %>%
+  filter(ranking <=21)
+
+pl <- ggplot(cc1, aes(x=year, y=SumaTotal , group=Country, color=Country)) + geom_line() + facet_grid(Country ~ .) +
+  expand_limits(y=2) + theme(legend.position = "none") + labs(title = "Paises con mayor número de turistas ",    caption = "Source:Datos INE",
+              x = "Fecha ",
+              y = NULL,
+              color = "Continente",
+              subtitle = "En millones de visitantes")
+
+
+
+#Intente fer-ho per separa't
+#Alemania
+filtro2 <- filtro %>% filter(Country=="Alemania")
+pl1 <- ggplot(filtro2, aes(x=year, y=SumaTotal , group=Country, color=Country)) + geom_line() + facet_grid(Country ~ .) +
+  expand_limits(y=2) + theme(legend.position = "none") + labs(title = "Número de turistas de Alemania",    caption = "Source:Datos INE",
+              x = "Fecha ",
+              y = NULL,
+              color = "Continente",
+              subtitle = "En millones de visitantes")
+
+plotly::ggplotly(pl1)
+
+#Francia
+filtro3 <- filtro %>% filter(Country=="Francia")
+pl2 <- ggplot(filtro3, aes(x=year, y=SumaTotal , group=Country, color=Country)) + geom_line() + facet_grid(Country ~ .) +
+  expand_limits(y=2) + theme(legend.position = "none") + labs(title = "Número de turistas de Francia",    caption = "Source:Datos INE",
+              x = "Fecha ",
+              y = NULL,
+              color = "Continente",
+              subtitle = "En millones de visitantes")
+
+plotly::ggplotly(pl2)
+
+#Reino Unido
+filtro4 <- filtro %>% filter(Country=="Reino Unido")
+pl3 <- ggplot(filtro4, aes(x=year, y=SumaTotal , group=Country, color=Country)) + geom_line() + facet_grid(Country ~ .) +
+  expand_limits(y=2) + theme(legend.position = "none") + labs(title = "Número de turistas del Reino Unido ",    caption = "Source:Datos INE",
+              x = "Fecha ",
+              y = NULL,
+              color = "Continente",
+              subtitle = "En millones de visitantes")
+
+plotly::ggplotly(pl3)
+
+#Intentar Unir
+library(patchwork)
+(pl1)/(pl2)/(pl3)
+```
+
+###  ***Motivos de sus llegadas*** 
+
+Según los datos proporcionados por el INE , los turistas que visitan España en su gran mayoria lo hacen  para disfutar del ocio.De hecho el ocio abarca el turismo en todas sus múltiples facetas:Turismo cultural, Turismo de salud, Turismo de sol y playa, Turismo itinerante, Turismo residencial, Turismo rural, Turismo urbano....
+
+Los viajes realizados con fines de negocio son el segundo gran motivo, aunque sin ser capaz de superar al ocio. Mientras que el último lugar, los extranjeros visitan España con otros fines distintos, entre los que podemos destacar :Compras, Formación y Educación, Incentivos de empresa, religiosos y de salud.
+
+```{r, echo=TRUE}
+#Importamos los datos de los motivos del turismo
+url <- "https://raw.githubusercontent.com/Pavlinadinkova/10/main/csv.csv"
+aa<- rio::import(url, setclass="tibble")
+names(aa)= c("Reason","VType", "Fecha","Total")
+data <- aa %>% mutate( Total = stringr::str_remove_all(Total, pattern = "([.])"))
+data <- data %>% mutate( Total = stringr::str_replace_all(Total , pattern = "[,]" , replacement = "." ))
+data <- data %>% mutate( Total = as.numeric(Total))
+
+cc<- data %>% filter(Reason !="Total")
+
+g <- ggplot(cc, aes( Fecha, Total))
+g + geom_bar(aes(fill=Reason),stat = "identity", width = 0.5) +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6)) +
+  labs(title="Motivos de viajes",
+       subtitle="Viajes")
+
+```
+
+
+
+###  ***Principales destinos turisticos*** 
+
+En este gráfico tipo Lollipop podemos ver las comunidades autónomas que más turistas recibieron en 2019. Podemos ver como Cataluña ha sido la comunidad que más turistas ha recibido, también cabe destacar que tan solo 6 comunidades autónomas reciben prácticamente la totalidad de turistas que viajan a España. 
+
+Los datos para realizar este gráfico los hemos obtenido del INE.
+
+```{r,echo=TRUE}
+#Cargamos los datos alojados en github
+url <- "https://raw.githubusercontent.com/xi765/TrabajoGrupo/main/tur_ccaa_2019.csv"
+#Arreglamos los datos: Cambiamos nombres, quitamos signos de puntuación y ordenamos en factores.
+data <- rio::import(url) %>% select(-c(2)) %>% setNames(c("CCAA","año","valor")) %>% 
+                             mutate(valor = stringr::str_remove_all(valor,"[.]"), 
+                                    valor = as.numeric(valor),
+                                    CCAA = factor(CCAA, levels = CCAA[order(valor, decreasing = TRUE)]))
+
+ejey <- seq(0,20,2.5)
+# Hacemos el gráfico
+theme_set(theme_classic())
+ggplot(data, aes(x=CCAA, y=valor)) +
+  scale_x_discrete(labels = c("Cataluña","Baleares","Canarias","Andalucía","Valencia","Madrid","Galicia","País Vasco","CyL","Murcia","Aragón","Extremadura","Navarra","Cantabria","Asturias","CyM","La Rioja"))+
+  scale_y_continuous(labels = paste0(ejey,"M"),breaks = 10^6*ejey) +
+  geom_point(size=3) +
+  geom_segment(aes(x=CCAA,
+                   xend=CCAA,
+                   y=0,
+                   yend=valor))+
+  labs(title="Comunidades autónomas más visitadas",
+       subtitle="Año: 2019",
+       caption="Fuente: INE",
+       x="Comunidad autonoma",
+       y="Visitantes anuales") +
+  theme(panel.grid.major.y = element_line(colour = "#dadada"),axis.text.x = element_text(angle=65, vjust=0.6))
+```
+
+
+
+###  ***Monumentos más visitados***
+
+España es el paraíso de la arquitectura, literalmente. Pocos países reúnen de manera tan compacta tantos estilos arquitectónicos y edificios tan sobrecogedoramente bellos como lo hace España. Pasear por cualquiera de sus ciudades es como emprender un viaje por el tiempo a través de sus calles adoquinadas, monumentos históricos y piezas arquitectónicas únicas. De hecho, algunos de los monumentos de la lista fueron pioneros en su época.
+
+
+En el gráfico podemos ver cuáles son los 10 monumentos más visitados en España, medido en millones de turistas anuales. Además, se ha añadido una foto del monumento. 
+
+Podemos observar que, el monumento más visitado en España es la **Sagrada Familia** en Barcelona con unos 4,5 millones de visitantes anuales. Sin embargo, es visitada tanto por nacionales como por internacionales, pues es considerada como uno de los monumentos más bonitos y famosos a nivel nacional e incluso internacional. 
+
+
+```{r }
+#Importamos datos de monumentos
+url4 <- "https://raw.githubusercontent.com/Pavlinadinkova/10/main/monumentos.csv"
+mm<- rio::import(url4, setclass="tibble")  %>%  mutate(Monumento = c("Palacio Real de Madrid","Museo de Reina Sofia","Camp Nou","Reales Alcázares","Mezquita de Córdoba","Catedral de Sevilla","Alhambra de Granada","Ciudad de las Artes y Ciencias","Catedral Santiago de Compostela","Museo de Prado","Sagrada Familia"),Monumento = factor(Monumento, levels = Monumento[order(Numero_visitantes, decreasing = TRUE)]), Numero_visitantes = stringr::str_remove_all(Numero_visitantes, pattern = "[^[:alnum:]]"), Numero_visitantes = as.numeric(Numero_visitantes), )
+
+#Ejecutamos el gráfico de los monumentos más visitados
+ml <- ggplot(mm,aes(Monumento,Numero_visitantes,color = Monumento,fill= Monumento)) +
+  geom_bar(position = "stack",  width =.18,stat="identity") +
+  coord_flip()+
+  geom_text(aes(label= Numero_visitantes ,hjust=-.03,  colour="black"),size=3.2)+
+
+  theme(axis.line = element_line(color = "orange",size=1))+
+      theme(panel.background=element_blank())+
+      scale_x_discrete() +
+    xlab(NULL)+ylab(NULL)+
+  theme(legend.position = "none",
+                     axis.text = element_text(size = 8,face="bold"),
+        plot.title = element_text(size=14,face = "bold")) +
+  ggtitle("Monumentos más visitados en España " ,subtitle = "Por número de visitantes en el año 2019")
+
+
+#A este gráfico  le añadimos el comando ''draw_image'' para poner las imágenes.
+```
+```{r, echo=FALSE}
+ggdraw(ml) + draw_image("https://www.aerobusbcn.com/blog/wp-content/uploads/2019/02/sagrada-familia-700x500.jpg",x= 0.87, y = 0.06, width = 0.06, height = 0.06) + draw_image("https://www.barcelo.com/guia-turismo/wp-content/uploads/2019/03/Palacio-Real-de-Madrid.jpg",x= 0.64, y = 0.81, width = 0.06, height = 0.06) + draw_image("https://upload.wikimedia.org/wikipedia/commons/d/d9/Madrid_-_Museo_Nacional_Centro_de_Arte_Reina_Sof%C3%ADa_%28MNCARS%29_03.JPG",x= 0.68, y = 0.75, width = 0.06, height = 0.06) + draw_image("https://img.fifa.com/image/upload/t_tc1/dq6tczszvf4ebburt5b8.jpg",x= 0.70, y = 0.68, width = 0.06, height = 0.06) + draw_image("https://centrohistorico.info/wp-content/uploads/2020/02/alcazar-sevilla-experienciasapie.jpg",x= 0.72, y = 0.60, width = 0.06, height = 0.06) + draw_image("https://mymodernmet.com/wp/wp-content/uploads/2020/02/Mezquita-Cordoba-1.jpg",x= 0.73, y = 0.53, width = 0.06, height = 0.06) + draw_image("https://fotos.hoteles.net/articulos/catedral-sevilla-5561-1.jpg",x= 0.74, y = 0.45, width = 0.07, height = 0.07) + draw_image("https://media.tacdn.com/media/attractions-splice-spp-674x446/06/6f/59/f9.jpg",x= 0.792, y = 0.375, width = 0.07, height = 0.07)  + draw_image("https://www.cuantochollo.com/wp-content/uploads/2018/01/ciudad-artes-ciencias-valencia-1.jpg",x= 0.83, y = 0.30, width = 0.07, height = 0.07) + draw_image("https://fotos.hoteles.net/articulos/catedral-santiago-de-compostela-2609-1.jpg",x= 0.85, y = 0.22, width = 0.06, height = 0.06) + draw_image("https://www.viajarmadrid.com/wp-content/uploads/museo-prado.jpg",x= 0.90, y = 0.13, width = 0.06, height = 0.06)
+
+
+```
+
+###  ***Ingresos por país***
+
+
+Para reflejar los países que más ingresos turísticos dejan en España hemos hecho varios gráficos tipo Queso. En estos gráficos podemos observar como más del 50% de los ingresos de nuestro sector turístico vienen de nuestros vecinos europeos, haciendose evidente lo dependientes que somos de Europa en este sentido.
+
+
+
+```{r, echo=TRUE}
+#Cargamos los datos alojados en github
+url <- "https://raw.githubusercontent.com/xi765/TrabajoGrupo/main/23994bd.csv"
+data <- rio::import(url)
+#Arreglamos los datos: Cambiamos nombres y eliminamos signos de puntuación.
+data <- data %>% rename(Date = Periodo)
+data <- data %>% relocate( Date, .before = `Gastos y duración media de los viajes`)
+data <- data %>% rename( Country = `País de residencia` , VType = `Tipo de dato` , Variable = `Gastos y duración media de los viajes`)
+data <- data %>% mutate( Total = stringr::str_remove_all(Total, pattern = "([.])"))
+data <- data %>% mutate( Total = stringr::str_replace_all(Total , pattern = "[,]" , replacement = "." ))
+data <- data %>% mutate( Total = as.numeric(Total))
+
+#GRÁFICO DE BARRAS
+#Acabamos de arreglar los datos para adaptarlos a este gráfico en concreto
+aa <- data %>% filter(Variable == "Gasto total" , !Country %in% c("Total"),VType == "Dato base")
+aa <- aa %>% mutate(Country = replace(Country, Country %in% c("Suiza","Rusia","Irlanda","Resto América","Resto de Europa","Resto del Mundo"),"Otros"))
+aa <- aa %>% group_by(Country,Date) %>% summarise( Total = sum(Total))
+aa <- aa %>% group_by(Date) %>% mutate( TotalY = sum(Total))
+aa <- aa %>% mutate( perc. = (Total/TotalY))
+
+#Ordenamos las variables mediante factores.
+bb <- aa %>% group_by(Date) %>% mutate(Country = factor(Country, levels = Country[order(perc.)]))
+#Hacemos el gráfico.
+plot <- bb %>% ggplot(aes(x = Country, y = perc.,fill = Country)) +
+               geom_bar(stat = "identity", color = "black") +
+               facet_wrap(vars(Date),nrow = 2, ncol = 2) +
+               scale_fill_brewer(palette = "Spectral", direction = -1) +
+               scale_y_continuous(breaks = seq(0,1,0.05),labels = scales::percent) +
+               labs(fill="Países",
+               x=NULL,
+               y="% sobre el total de gasto",
+               title="Gasto en turismo por país",
+               caption="Fuente: INE") +
+               theme( plot.background = element_rect( fill = "#e8d7a3"),
+              panel.background = element_rect( fill = "cornsilk2", colour = "lavenderblush", size = 0.1 ),
+              panel.grid  = element_line( colour ="grey"),
+              axis.ticks = element_blank(),
+              axis.text.x = element_blank(),
+              plot.title = element_text(hjust = 0.5),
+              panel.border = element_rect(fill = NA,colour = "black"),
+              legend.background = element_rect( fill = "cornsilk2", colour = "black" ),
+              plot.margin = margin(t = 5, r = 25, b = 5,15),
+              strip.background = element_rect(fill = "#e8d7a3",colour = NULL))
+plot
+```
+
+
+Adicionalmente hemos hecho un gráfico de barras con los mismos datos. Observando el gráfico llegamos a las mismas conclusiones que con el anterior, siendo Alemania y Reino Unido los que más ingresos turísticos dejan en nuestro país.
+
+```{r, echo = TRUE}
+#Cargamos los datos y los arreglamos.
+url <- "https://raw.githubusercontent.com/xi765/TrabajoGrupo/main/10838bd.csv"
+data <- rio::import(url)
+data <- data %>% mutate( Date = stringr::str_replace_all(Periodo , pattern = "([A-Z])" , replacement = "-") , .keep = "unused" )
+data <- data %>% relocate( Date, .before = `Gastos y duración media de los viajes`)
+data <- data %>% rename( Country = `País de residencia` , VType = `Tipo de dato` , Variable = `Gastos y duración media de los viajes`)
+data <- data %>% mutate( Total = stringr::str_remove_all(Total, pattern = "([.])"))
+data <- data %>% mutate( Total = stringr::str_replace_all(Total , pattern = "[,]" , replacement = "." ))
+data <- data %>% mutate( Total = as.numeric(Total))
+
+aa <- data %>% separate( col = Date , into = c("Year","Month") , sep = "-")
+aa <- aa %>% filter(Variable == "Gasto total" , Country != "Total" , Year %in% c(2016,2017,2018,2019),VType == "Dato base")
+#Creamos variables nuevas
+aa <- aa %>% group_by(Country,Year) %>% summarise( Total = sum(Total))
+aa <- aa %>% group_by(Year) %>% mutate( TotalY = sum(Total))
+aa <- aa %>% mutate( perc. = (Total/TotalY))
+
+#Hacemos el gráfico
+plot <- ggplot(aa, aes(x = "", y=perc., fill = factor(Country))) +
+  geom_bar(width = 1, stat = "identity",color = "#000000") +
+  coord_polar(theta = "y", start=0) +
+  labs(fill="País",
+       x=NULL,
+       y=NULL,
+       title="Gasto por país y año",
+       caption="Fuente: INE") + facet_wrap(vars(Year),nrow = 2, ncol = 2) +
+      scale_y_continuous(breaks = seq(0,0.8,0.2),labels = scales::percent) +
+      scale_fill_brewer(palette = "Set1") +
+      theme( strip.background = element_rect( fill = "#ffffff", colour = NULL),
+              panel.background = element_rect( fill = "cornsilk2", colour = "black" ),
+              panel.grid  = element_line( colour ="cornsilk2"),
+              axis.ticks = element_line(colour = "cornsilk2"),
+              axis.text = element_text(size = 10, face = "bold"),
+              plot.title = element_text(hjust = 0.5),
+              plot.background = element_rect(fill = "#ffffff"),
+              panel.border = element_rect(fill = NA,color = "black"),
+              legend.background = element_rect(fill = "cornsilk2", colour = "black"),
+              strip.text = element_text(face = "bold",colour = "black"))
+plot
+
+```
+
+
+## <FONT COLOR="Green">  5. El turismo en tiempos de COVID-19</FONT>
+
+España figura  entre los países más golpeados por la pandemia en pérdida de turistas internacionales y de los ingresos que éstos generan.
+Según los últimos datos oficiales conocidos del Instituto Nacional de Estadística (**INE**), entre enero y septiembre llegaron a territorio español un total de 16.8 millones de extranjeros, un 74.9% menos que en el mismo periodo de 2019 - año récord-. Son 50.1 millones menos.
+
+En una línea similar , el gasto de estos turistas se limitó a 17.775 millones de euros, un 75.9% menos, que se traduce en una caída de 55.980 millones menos.
+
+Todo ello es consecuencia de las restricciones a la movilidad en todo el mundo. En este entorno de incertidumbre por la pandemia y de falta de confianza, este organismo prevé una caída global cercana al 70% en el conjunto de 2020 y la mayoría de los expertos consultados no esperan un repunte hasta el tercer trimestre de 2021 o incluso 2022, si bien todo dependerá de los avances en la vacuna.
+
+```{r}
+knitr::include_graphics("https://www.garrigues.com/sites/default/files/turismo-digital-covid-19.jpg")
+
+```
+
+```{r,echo = TRUE}
+el_url <- "https://raw.githubusercontent.com/AnaMaria1198/Trabajo/main/10822bd%20(2).csv"
+
+
+datos <- rio::import(el_url)
+datos <- datos %>% mutate( Total = stringr::str_remove_all(Total, pattern = "([.])"))
+datos <- datos %>% mutate( Total = stringr::str_replace_all(Total , pattern = "[,]" , replacement = "." ))
+datos <- datos %>% mutate( Total = as.numeric(Total))
+#Arreglar-lo
+datos <- datos %>% mutate( VType = stringr::str_replace_all(VType , pattern = "[³]" , replacement = "" ))
+datos <- datos %>% mutate( VType = stringr::str_replace_all(VType , pattern = "[±]" , replacement = "ny" ))
+datos <- datos %>% mutate( VType = stringr::str_replace_all(VType , pattern = "[Ã]" , replacement = "o" ))
+datos <- datos %>% mutate( Country = stringr::str_replace_all(Country , pattern = "[Ã©]" , replacement = "e" ))
+datos <- datos %>% mutate( Country = stringr::str_replace_all(Country , pattern = "[³]" , replacement = "o" ))
+
+#Arreglar datos
+aa <- datos %>% filter(VType == "Dato base")
+bb <- aa %>% separate(Date, c("year","month"), sep = "[-]") %>% select(-c(month))
+
+cc <- bb %>% group_by(year, Country) %>% filter(Country!=Total) %>% mutate(SumaTotal= sum(Total)) %>% mutate(year = unique(year)) %>% ungroup()
+
+#GRÁFICOS
+datos11 <- cc
+
+df<- datos11 %>% filter(Country=="Total") %>% select(c(year,SumaTotal)) %>% unique() %>% mutate(year = as.numeric(year))
+
+dd <- ggplot(df, aes(year, SumaTotal)) + geom_point() + geom_line() +
+  theme_minimal() +
+  transition_reveal(year)
+dd
+```
+
+
+
+## <FONT COLOR="Green">  6. Conclusiones</FONT>
+
+Con este trabajo hemos podido analizar la importancia que el sector turistico tiene en el mundo, centrandonos en España, tanto dentro de esta, analizando los tipos de turismo, gastos o número de turistas, como en el exterior viendo su posición a nivel global. Tras los analisis realizados hemos podido comprobar que depende mucho del turismo.Estos países dependen en gran medida del tercer sector para crecer, ya que buena parte de su PIB está ligado a la llegada de visitantes y su gasto en el territorio.
+
+Por otra parte hemos visto que la pandemia global en la que estamos viviendo ha afectado considerablemente la economia española ya que ha paralizado su sector más importante.
+Pero no solo eso,también hemos visto como ha pesar de ser un sector en crecimiento, este crecimiento se ha estado reduciendo en los últimos años, mucho antes de la llegada de la nueva situación sanitaria.
+
+Así que creemos que es importante ser conscientes de esto y buscar alternativas en el mismo sector o en otros sectores para en un futuro evitar una situación similar a la de ahora.
+
+
+## <FONT COLOR="Green"> 7. Bibliografia </FONT>
+
+>- Página oficial del Instituto Nacional de Estadística. [aquí](https://www.ine.es/dyngs/INEbase/listaoperaciones.htm)
+
+>- Ministerio de Industria, Comercio y Turismo. [aquí](https://www.mincotur.gob.es/es-es/COVID-19/turismo/Paginas/index.aspx)
+
+>- Artículo del periódico **El País** [aquí](https://elpais.com/economia/2019/08/06/actualidad/1565104150_050501.html)
+
+
+>- Agencia de Noticias Europa Press[aquí](https://www.europapress.es/turismo/nacional/noticia-espana-cierra-2019-837-millones-turistas-extranjeros-11-mas-nuevo-record-historico-20200203093207.html)
+
+>- Eurostat [aquí](https://ec.europa.eu/info/departments/eurostat-european-statistics_es)
+
+>- Institut d'Estadistica de les Illes Balears [aquí](https://ibestat.caib.es/ibestat/estadistiques/ff5e9b1a-f739-410b-9244-0e47232ef3a6/aafabdb5-b9b6-4fce-a147-3c8d617da27f/es/I302033_tu21.px)
+
+
+>- APIE: Asociación de Periodistas de Información [aquí](https://www.apie.es/wp-content/uploads/2018/04/ESTUDIO-EMPLEO-SECTOR-TURISTICO-EXCELTUR.pdf)
+
+
+
+ 
+
+
+
+
+
+----------------
+
+<br><br>
+
+Para acabar este chunk para incluir tu `session info`:
+
+```{r}
+sessioninfo::session_info() %>% details::details(summary = 'current session info') 
+```
